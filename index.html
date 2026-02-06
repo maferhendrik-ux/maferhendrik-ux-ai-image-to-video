@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image to Video Generator</title>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.2/dist/ffmpeg.min.js"></script>
+  <style>
+    body { font-family: Arial; max-width: 800px; margin: auto; padding: 20px; background: #f5f5f5; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    input, select, button { padding: 10px; margin: 10px 0; width: 100%; border-radius: 8px; border: 1px solid #ccc; }
+    button { background: #000; color: white; font-weight: bold; cursor: pointer; }
+    #preview img { width: 80px; margin-right: 5px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Image to Video Generator</h2>
+    <label>Upload Images:</label>
+    <input type="file" id="images" multiple accept="image/*" />
+
+    <label>Durasi per gambar (detik):</label>
+    <input type="number" id="duration" value="2" />
+
+    <label>Musik (opsional):</label>
+    <input type="file" id="audio" accept="audio/*" />
+
+    <label>Resolusi:</label>
+    <select id="resolution">
+      <option value="1920x1080">1080p (16:9)</option>
+      <option value="1080x1920">Vertical (9:16)</option>
+      <option value="720x1280">720x1280</option>
+    </select>
+
+    <button onclick="generateVideo()">Generate Video</button>
+  </div>
+
+  <div class="card">
+    <h3>Preview Gambar:</h3>
+    <div id="preview"></div>
+  </div>
+
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+
+    document.getElementById("images").addEventListener("change", function (e) {
+      const preview = document.getElementById("preview");
+      preview.innerHTML = "";
+      [...e.target.files].forEach(img => {
+        const url = URL.createObjectURL(img);
+        const el = document.createElement("img");
+        el.src = url;
+        preview.appendChild(el);
+      });
+    });
+
+    async function generateVideo() {
+      const files = document.getElementById("images").files;
+      if (!files.length) return alert("Upload minimal 1 gambar!");
+
+      const duration = document.getElementById("duration").value;
+      const resolution = document.getElementById("resolution").value;
+      const audio = document.getElementById("audio").files[0];
+
+      await ffmpeg.load();
+
+      for (let i = 0; i < files.length; i++) {
+        ffmpeg.FS("writeFile", `img${i}.png`, await fetchFile(files[i]));
+      }
+
+      let inputs = "";
+      for (let i = 0; i < files.length; i++) {
+        inputs += `-loop 1 -t ${duration} -i img${i}.png `;
+      }
+
+      if (audio) ffmpeg.FS("writeFile", "audio.mp3", await fetchFile(audio));
+
+      const cmd = `${inputs} ${audio ? "-i audio.mp3" : ""} -filter_complex "concat=n=${files.length}:v=1:a=0,scale=${resolution}:force_original_aspect_ratio=decrease" ${audio ? "-shortest" : ""} output.mp4`.split(" ");
+      await ffmpeg.run(...cmd);
+
+      const data = ffmpeg.FS("readFile", "output.mp4");
+      const url = URL.createObjectURL(new Blob([data.buffer], { type: "video/mp4" }));
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "video.mp4";
+      a.click();
+    }
+  </script>
+</body>
+</html>
